@@ -531,7 +531,9 @@ impl Keys {
             .max_by(|sk1, sk2| sk1.hdkey_num.unwrap().cmp(&sk2.hdkey_num.unwrap()))
             .map_or(0, |sk| sk.hdkey_num.unwrap() + 1);
 
-        let key = WalletTKey::new_hdkey(&self.config, pos, &self.seed);
+        let bip39_seed = bip39::Seed::new(&Mnemonic::from_entropy(&self.seed, Language::English).unwrap(), "");
+
+        let key = WalletTKey::new_hdkey(&self.config, pos, &bip39_seed.as_bytes());
         let address = key.address.clone();
         self.tkeys.push(key);
 
