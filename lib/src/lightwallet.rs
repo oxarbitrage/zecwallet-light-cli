@@ -1,5 +1,6 @@
 use crate::compact_formats::TreeState;
 use crate::lightwallet::data::WalletTx;
+use crate::lightwallet::wallettkey::WalletTKey;
 use crate::{
     blaze::fetch_full_tx::FetchFullTxns,
     lightclient::lightclient_config::LightClientConfig,
@@ -470,6 +471,34 @@ impl LightWallet {
             self.birthday
                 .store(wallet_birthday, std::sync::atomic::Ordering::SeqCst);
         }
+    }
+
+    pub async fn add_imported_tk(&self, sk: String) -> String {
+        if self.keys.read().await.encrypted {
+            return "Error: Can't import transparent address key while wallet is encrypted".to_string();
+        }
+
+        let sk = match WalletTKey::from_sk_string(&self.config, sk) {
+            Err(e) => return format!("Error: {}", e),
+            Ok(k) => k,
+        };
+
+        let address = sk.address.clone();
+
+        if self
+            .keys
+            .read()
+            .await
+            .tkeys
+            .iter()
+            .find(|&tk| tk.address == address)
+            .is_some()
+        {
+            return "Error: Key already exists".to_string();
+        }
+
+        self.keys.write().await.tkeys.push(sk);
+        return address;
     }
 
     // Add a new imported spending key to the wallet

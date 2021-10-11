@@ -2,6 +2,7 @@ use std::io::{self, Error, ErrorKind, Read, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ripemd160::Digest;
+use secp256k1::SecretKey;
 use sha2::Sha256;
 use sodiumoxide::crypto::secretbox;
 use zcash_primitives::serialize::{Optional, Vector};
@@ -11,7 +12,10 @@ use crate::{
     lightwallet::extended_key::{ExtendedPrivKey, KeyIndex},
 };
 
-use super::{keys::ToBase58Check, utils};
+use super::{
+    keys::{FromBase58Check, ToBase58Check},
+    utils,
+};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum WalletTKeyType {
@@ -74,6 +78,28 @@ impl WalletTKey {
             enc_key: None,
             nonce: None,
         }
+    }
+
+    pub fn from_sk_string(config: &LightClientConfig, sks: String) -> io::Result<Self> {
+        let (_v, mut bytes) = sks.as_str().from_base58check()?;
+        let suffix = bytes.split_off(32);
+
+        // Assert the suffix
+        assert_eq!(suffix.len(), 1);
+        assert_eq!(suffix[0], 0x01);
+
+        let key = SecretKey::from_slice(&bytes).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+        let address = Self::address_from_prefix_sk(&config.base58_pubkey_address(), &key);
+
+        Ok(WalletTKey {
+            keytype: WalletTKeyType::ImportedKey,
+            key: Some(key),
+            address,
+            hdkey_num: None,
+            locked: false,
+            enc_key: None,
+            nonce: None,
+        })
     }
 
     pub fn new_hdkey(config: &LightClientConfig, hdkey_num: u32, bip39_seed: &[u8]) -> Self {
@@ -295,6 +321,43 @@ impl WalletTKey {
                 self.nonce = None;
                 Ok(())
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use rand::{rngs::OsRng, Rng};
+    use secp256k1::SecretKey;
+
+    use crate::lightclient::lightclient_config::LightClientConfig;
+
+    use super::WalletTKey;
+
+    #[test]
+    fn tkey_encode_decode() {
+        let config = LightClientConfig::create_unconnected("main".to_string(), None);
+
+        for _i in 0..10 {
+            let mut b = [0u8; 32];
+
+            // Gen random key
+            OsRng.fill(&mut b);
+            let sk = SecretKey::from_slice(&b).unwrap();
+            let address = WalletTKey::address_from_prefix_sk(&config.base58_pubkey_address(), &sk);
+            let wtk = WalletTKey::from_raw(&sk, &address, 0);
+
+            // export private key
+            let sks = wtk.sk_as_string(&config).unwrap();
+            // println!("key:{}", sks);
+
+            // Import it back
+            let wtk2 = WalletTKey::from_sk_string(&config, sks).unwrap();
+
+            // Make sure they're the same
+            assert_eq!(wtk.address, wtk2.address);
+            assert_eq!(wtk.key.unwrap(), wtk2.key.unwrap());
         }
     }
 }
