@@ -85,8 +85,9 @@ impl WalletTKey {
         let suffix = bytes.split_off(32);
 
         // Assert the suffix
-        assert_eq!(suffix.len(), 1);
-        assert_eq!(suffix[0], 0x01);
+        if suffix.len() !=1 || suffix[0] != 0x01 {
+            return Err(io::Error::new(ErrorKind::InvalidData, format!("Invalid Suffix: {:?}", suffix)));
+        }
 
         let key = SecretKey::from_slice(&bytes).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
         let address = Self::address_from_prefix_sk(&config.base58_pubkey_address(), &key);
