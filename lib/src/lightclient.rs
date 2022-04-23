@@ -1560,3 +1560,6 @@ pub mod tests;
 
 #[cfg(test)]
 pub(crate) mod test_server;
+
+#[cfg(test)]
+mod zebra_tests;
